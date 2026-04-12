@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pth
+*.safetensors
+Dinov3/
+backbones/weights/
+saved_results/
