@@ -79,7 +79,10 @@ def train(item):
     total_iters = 5000
     batch_size = 16
     image_size = 448
-    crop_size = 392
+
+    encoder_name = args.encoder_name
+    patch_size = int(encoder_name.split('_')[-1])
+    crop_size = (392 // patch_size) * patch_size  # 自动对齐 patch_size 整除
 
     data_transform, gt_transform = get_data_transforms(image_size, crop_size)
 
@@ -91,10 +94,6 @@ def train(item):
     train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=4,
                                                    drop_last=True)
     test_dataloader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=4)
-
-    # encoder_name = 'dinov2reg_vit_small_14'
-    encoder_name = 'dinov2reg_vit_base_14'
-    # encoder_name = 'dinov2reg_vit_large_14'
 
     target_layers = [2, 3, 4, 5, 6, 7, 8, 9]
     fuse_layer_encoder = [[0, 1, 2, 3], [4, 5, 6, 7]]
@@ -198,13 +197,22 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--data_path', type=str, default='../mvtec_anomaly_detection')
     parser.add_argument('--save_dir', type=str, default='./saved_results')
-    parser.add_argument('--save_name', type=str,
-                        default='vitill_mvtec_sep_dinov2br_c392_en29_bn4dp2_de8_elaelu_md2_i1_it10k_sadm2e3_wd1e4_w1hcosa_ghmp09f01w1k_b16_ev_s1')
+    parser.add_argument('--save_name', type=str, default=None)
+    parser.add_argument('--encoder_name', type=str, default='dinov2reg_vit_base_14',
+                        help='e.g. dinov2reg_vit_base_14, dinov2reg_vit_small_14, dinov3_vit_small_16')
+    parser.add_argument('--item_list', type=str, nargs='+', default=None,
+                        help='class names to train, default: all MVTec classes')
     args = parser.parse_args()
 
-    item_list = ['carpet', 'grid', 'leather', 'tile', 'wood', 'bottle', 'cable', 'capsule',
-                 'hazelnut', 'metal_nut', 'pill', 'screw', 'toothbrush', 'transistor', 'zipper']
-    # item_list = ['leather']
+    default_items = ['carpet', 'grid', 'leather', 'tile', 'wood', 'bottle', 'cable', 'capsule',
+                     'hazelnut', 'metal_nut', 'pill', 'screw', 'toothbrush', 'transistor', 'zipper']
+    item_list = args.item_list if args.item_list else default_items
+
+    if args.save_name is None:
+        patch_size = int(args.encoder_name.split('_')[-1])
+        crop_size = (392 // patch_size) * patch_size
+        dataset_name = os.path.basename(os.path.normpath(args.data_path))
+        args.save_name = f'vitill_{dataset_name}_sep_{args.encoder_name}_c{crop_size}_it5k'
     logger = get_logger(args.save_name, os.path.join(args.save_dir, args.save_name))
     print_fn = logger.info
 
