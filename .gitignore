@@ -5,3 +5,5 @@ __pycache__/
 Dinov3/
 backbones/weights/
 saved_results/
+docs/
+prepare_data/yolo_to_mvtec.md
