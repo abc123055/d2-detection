@@ -411,7 +411,8 @@ def evaluation_batch(model, dataloader, device, _class_=None, max_ratio=0, resiz
 
 
 def predict_batch(model, dataloader, device, max_ratio=0.01, resize_mask=None,
-                  threshold=None, save_csv=None):
+                  threshold=None, threshold_mode='f1', normal_percentile=99.0,
+                  save_csv=None):
     """Per-image prediction: output each image's anomaly score and normal/abnormal label.
 
     Args:
@@ -420,11 +421,17 @@ def predict_batch(model, dataloader, device, max_ratio=0.01, resize_mask=None,
         device: torch device.
         max_ratio: top-k ratio for sample-level score (0 = global max).
         resize_mask: resize anomaly map before scoring.
-        threshold: decision threshold. If None, auto-select via best F1 on the data.
+        threshold: fixed decision threshold. If given, overrides threshold_mode.
+        threshold_mode: how to auto-select threshold when threshold is None.
+            'f1'     - best F1 on current data (default, needs labels).
+            'normal' - percentile of normal image scores (stable for deployment).
+        normal_percentile: percentile for 'normal' mode (default 99.0).
+            99 means "at most 1% of normal images will be false alarms".
         save_csv: if given, save per-image results to this CSV path.
 
     Returns:
-        list of dicts with keys: img_path, score, pred, label.
+        list of dicts with keys: img_path, score, pred, label, correct.
+        threshold value used.
     """
     model.eval()
     gaussian_kernel = get_gaussian_kernel(kernel_size=5, sigma=4).to(device)
@@ -460,11 +467,23 @@ def predict_batch(model, dataloader, device, max_ratio=0.01, resize_mask=None,
     all_scores = torch.cat(all_scores).numpy()
     all_labels = torch.cat(all_labels).numpy()
 
-    # auto threshold via best F1 if not given
-    if threshold is None:
+    # select threshold
+    if threshold is not None:
+        thr_method = 'manual'
+    elif threshold_mode == 'normal':
+        normal_scores = all_scores[all_labels == 0]
+        if len(normal_scores) == 0:
+            print("[predict] WARNING: no normal (good) images found, falling back to f1 mode")
+            threshold_mode = 'f1'
+        else:
+            threshold = np.percentile(normal_scores, normal_percentile)
+            thr_method = f'normal_p{normal_percentile}'
+
+    if threshold is None:  # f1 mode (default or fallback)
         precs, recs, thrs = precision_recall_curve(all_labels, all_scores)
         f1s = 2 * precs * recs / (precs + recs + 1e-7)
         threshold = thrs[f1s[:-1].argmax()]
+        thr_method = 'f1_best'
 
     preds = (all_scores >= threshold).astype(int)
 
@@ -481,7 +500,29 @@ def predict_batch(model, dataloader, device, max_ratio=0.01, resize_mask=None,
     # print summary
     n_total = len(results)
     n_correct = sum(r['correct'] for r in results)
-    print(f"[predict] threshold={threshold:.4f}  accuracy={n_correct}/{n_total} ({n_correct/n_total:.4f})")
+
+    # recall & precision
+    tp = sum(1 for r in results if r['pred'] == 1 and r['label'] == 1)
+    fp = sum(1 for r in results if r['pred'] == 1 and r['label'] == 0)
+    fn = sum(1 for r in results if r['pred'] == 0 and r['label'] == 1)
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+
+    # score distribution of normal vs abnormal
+    normal_scores = all_scores[all_labels == 0]
+    anomaly_scores = all_scores[all_labels == 1]
+    print(f"[predict] score distribution:")
+    if len(normal_scores) > 0:
+        print(f"  normal  (n={len(normal_scores):>4d}): min={normal_scores.min():.4f}  "
+              f"mean={normal_scores.mean():.4f}  max={normal_scores.max():.4f}  "
+              f"std={normal_scores.std():.4f}")
+    if len(anomaly_scores) > 0:
+        print(f"  anomaly (n={len(anomaly_scores):>4d}): min={anomaly_scores.min():.4f}  "
+              f"mean={anomaly_scores.mean():.4f}  max={anomaly_scores.max():.4f}  "
+              f"std={anomaly_scores.std():.4f}")
+    print(f"[predict] threshold={threshold:.4f} ({thr_method})  "
+          f"accuracy={n_correct}/{n_total} ({n_correct/n_total:.4f})  "
+          f"precision={precision:.4f}  recall={recall:.4f}")
 
     # save CSV
     if save_csv is not None:

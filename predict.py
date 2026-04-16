@@ -111,6 +111,8 @@ def run(args):
             max_ratio=args.max_ratio,
             resize_mask=args.resize_mask,
             threshold=args.threshold,
+            threshold_mode=args.threshold_mode,
+            normal_percentile=args.normal_percentile,
             save_csv=csv_path,
         )
 
@@ -140,7 +142,14 @@ if __name__ == '__main__':
                         help='Top-k ratio for sample-level score (0 = global max)')
     parser.add_argument('--resize_mask', type=int, default=256)
     parser.add_argument('--threshold', type=float, default=None,
-                        help='Fixed threshold. If omitted, auto-select best F1 threshold')
+                        help='Fixed threshold. If omitted, auto-select by --threshold_mode')
+    parser.add_argument('--threshold_mode', type=str, default='f1', choices=['f1', 'normal'],
+                        help='Auto threshold strategy when --threshold not given. '
+                             'f1: best F1 on test data (overfits, for analysis only). '
+                             'normal: percentile of normal-image scores (stable for deployment).')
+    parser.add_argument('--normal_percentile', type=float, default=99.0,
+                        help='Percentile for --threshold_mode=normal. '
+                             '99 means at most 1%% of normal images become false alarms.')
     parser.add_argument('--save_csv', type=str, default=None,
                         help='CSV save path (only for single item). '
                              'For multiple items, auto-saves to --save_dir/<item>_predictions.csv')
