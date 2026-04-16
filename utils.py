@@ -1,3 +1,4 @@
+import os
 import torch
 from dataset import get_data_transforms
 from torchvision.datasets import ImageFolder
@@ -407,6 +408,89 @@ def evaluation_batch(model, dataloader, device, _class_=None, max_ratio=0, resiz
         f1_px = f1_score_max(gt_list_px, pr_list_px)
 
     return [auroc_sp, ap_sp, f1_sp, auroc_px, ap_px, f1_px, aupro_px]
+
+
+def predict_batch(model, dataloader, device, max_ratio=0.01, resize_mask=None,
+                  threshold=None, save_csv=None):
+    """Per-image prediction: output each image's anomaly score and normal/abnormal label.
+
+    Args:
+        model: trained model.
+        dataloader: test dataloader (returns img, gt, label, img_path).
+        device: torch device.
+        max_ratio: top-k ratio for sample-level score (0 = global max).
+        resize_mask: resize anomaly map before scoring.
+        threshold: decision threshold. If None, auto-select via best F1 on the data.
+        save_csv: if given, save per-image results to this CSV path.
+
+    Returns:
+        list of dicts with keys: img_path, score, pred, label.
+    """
+    model.eval()
+    gaussian_kernel = get_gaussian_kernel(kernel_size=5, sigma=4).to(device)
+
+    all_paths = []
+    all_scores = []
+    all_labels = []
+
+    with torch.no_grad():
+        for img, gt, label, img_path in dataloader:
+            img = img.to(device)
+            output = model(img)
+            en, de = output[0], output[1]
+
+            anomaly_map, _ = cal_anomaly_maps(en, de, img.shape[-1])
+
+            if resize_mask is not None:
+                anomaly_map = F.interpolate(anomaly_map, size=resize_mask, mode='bilinear', align_corners=False)
+
+            anomaly_map = gaussian_kernel(anomaly_map)
+
+            if max_ratio == 0:
+                sp_score = torch.max(anomaly_map.flatten(1), dim=1)[0]
+            else:
+                flat = anomaly_map.flatten(1)
+                sp_score = torch.sort(flat, dim=1, descending=True)[0][:, :int(flat.shape[1] * max_ratio)]
+                sp_score = sp_score.mean(dim=1)
+
+            all_paths.extend(list(img_path))
+            all_scores.append(sp_score.cpu())
+            all_labels.append(label)
+
+    all_scores = torch.cat(all_scores).numpy()
+    all_labels = torch.cat(all_labels).numpy()
+
+    # auto threshold via best F1 if not given
+    if threshold is None:
+        precs, recs, thrs = precision_recall_curve(all_labels, all_scores)
+        f1s = 2 * precs * recs / (precs + recs + 1e-7)
+        threshold = thrs[f1s[:-1].argmax()]
+
+    preds = (all_scores >= threshold).astype(int)
+
+    results = []
+    for path, score, pred, label in zip(all_paths, all_scores, preds, all_labels):
+        results.append({
+            'img_path': path,
+            'score': float(score),
+            'pred': int(pred),
+            'label': int(label),
+            'correct': pred == label,
+        })
+
+    # print summary
+    n_total = len(results)
+    n_correct = sum(r['correct'] for r in results)
+    print(f"[predict] threshold={threshold:.4f}  accuracy={n_correct}/{n_total} ({n_correct/n_total:.4f})")
+
+    # save CSV
+    if save_csv is not None:
+        os.makedirs(os.path.dirname(save_csv), exist_ok=True) if os.path.dirname(save_csv) else None
+        df = pd.DataFrame(results)
+        df.to_csv(save_csv, index=False)
+        print(f"[predict] saved to {save_csv}")
+
+    return results, threshold
 
 
 def evaluation_batch_loco(model, dataloader, device, _class_=None, max_ratio=0):

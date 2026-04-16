@@ -20,7 +20,7 @@ from models.vision_transformer import Block as VitBlock, bMlp, Attention, Linear
 from dataset import MVTecDataset
 import torch.backends.cudnn as cudnn
 import argparse
-from utils import evaluation_batch, global_cosine, replace_layers, global_cosine_hm_percent, WarmCosineScheduler
+from utils import evaluation_batch, predict_batch, global_cosine, replace_layers, global_cosine_hm_percent, WarmCosineScheduler
 from torch.nn import functional as F
 from functools import partial
 from ptflops import get_model_complexity_info
@@ -186,7 +186,10 @@ def train(item):
                 print_fn('iter [{}/{}], loss:{:.4f}'.format(it, total_iters, np.mean(loss_list)))
                 loss_list = []
 
-    # torch.save(model.state_dict(), os.path.join(args.save_dir, args.save_name, 'model.pth'))
+    torch.save(model.state_dict(), os.path.join(args.save_dir, args.save_name, 'model.pth'))
+
+    csv_path = os.path.join(args.save_dir, args.save_name, f'{item}_predictions.csv')
+    predict_batch(model, test_dataloader, device, max_ratio=0.01, resize_mask=256, save_csv=csv_path)
 
     return auroc_sp, ap_sp, f1_sp, auroc_px, ap_px, f1_px, aupro_px
 
