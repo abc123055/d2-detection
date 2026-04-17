@@ -15,6 +15,16 @@ import json
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 
+IMG_EXTENSIONS = ("*.png", "*.jpg", "*.jpeg", "*.JPG", "*.JPEG", "*.bmp", "*.BMP")
+
+
+def _glob_images(directory):
+    """Glob all common image formats from a directory."""
+    paths = []
+    for ext in IMG_EXTENSIONS:
+        paths.extend(glob.glob(os.path.join(directory, ext)))
+    return paths
+
 
 def get_data_transforms(size, isize, mean_train=None, std_train=None):
     mean_train = [0.485, 0.456, 0.406] if mean_train is None else mean_train
@@ -70,18 +80,14 @@ class MVTecDataset(torch.utils.data.Dataset):
 
         for defect_type in defect_types:
             if defect_type == 'good':
-                img_paths = glob.glob(os.path.join(self.img_path, defect_type) + "/*.png") + \
-                            glob.glob(os.path.join(self.img_path, defect_type) + "/*.JPG") + \
-                            glob.glob(os.path.join(self.img_path, defect_type) + "/*.bmp")
+                img_paths = _glob_images(os.path.join(self.img_path, defect_type))
                 img_tot_paths.extend(img_paths)
                 gt_tot_paths.extend([0] * len(img_paths))
                 tot_labels.extend([0] * len(img_paths))
                 tot_types.extend(['good'] * len(img_paths))
             else:
-                img_paths = glob.glob(os.path.join(self.img_path, defect_type) + "/*.png") + \
-                            glob.glob(os.path.join(self.img_path, defect_type) + "/*.JPG") + \
-                            glob.glob(os.path.join(self.img_path, defect_type) + "/*.bmp")
-                gt_paths = glob.glob(os.path.join(self.gt_path, defect_type) + "/*.png")
+                img_paths = _glob_images(os.path.join(self.img_path, defect_type))
+                gt_paths = _glob_images(os.path.join(self.gt_path, defect_type))
                 img_paths.sort()
                 gt_paths.sort()
                 img_tot_paths.extend(img_paths)
@@ -187,13 +193,13 @@ class LOCODataset(torch.utils.data.Dataset):
 
         for defect_type in defect_types:
             if defect_type == 'good':
-                img_paths = glob.glob(os.path.join(self.img_path, defect_type) + "/*.png")
+                img_paths = _glob_images(os.path.join(self.img_path, defect_type))
                 img_tot_paths.extend(img_paths)
                 gt_tot_paths.extend([0] * len(img_paths))
                 tot_labels.extend([0] * len(img_paths))
                 tot_types.extend(['good'] * len(img_paths))
             else:
-                img_paths = glob.glob(os.path.join(self.img_path, defect_type) + "/*.png")
+                img_paths = _glob_images(os.path.join(self.img_path, defect_type))
                 gt_paths = glob.glob(os.path.join(self.gt_path, defect_type) + "/*/000.png")
                 img_paths.sort()
                 gt_paths.sort()
@@ -298,7 +304,7 @@ class AeBADDataset(torch.utils.data.Dataset):
                 domain_types = [i for i in domain_types if i[0] != '.']
 
                 for domain_type in domain_types:
-                    img_paths = glob.glob(os.path.join(self.img_path, defect_type, domain_type) + "/*.png")
+                    img_paths = _glob_images(os.path.join(self.img_path, defect_type, domain_type))
                     img_tot_paths.extend(img_paths)
                     gt_tot_paths.extend([0] * len(img_paths))
                     tot_labels.extend([0] * len(img_paths))
@@ -308,8 +314,8 @@ class AeBADDataset(torch.utils.data.Dataset):
                 domain_types = [i for i in domain_types if i[0] != '.']
 
                 for domain_type in domain_types:
-                    img_paths = glob.glob(os.path.join(self.img_path, defect_type, domain_type) + "/*.png")
-                    gt_paths = glob.glob(os.path.join(self.gt_path, defect_type, domain_type) + "/*.png")
+                    img_paths = _glob_images(os.path.join(self.img_path, defect_type, domain_type))
+                    gt_paths = _glob_images(os.path.join(self.gt_path, defect_type, domain_type))
                     img_paths.sort()
                     gt_paths.sort()
                     img_tot_paths.extend(img_paths)
@@ -421,16 +427,14 @@ class MVTecDRAEMDataset(torch.utils.data.Dataset):
 
         for defect_type in defect_types:
             if defect_type == 'good':
-                img_paths = glob.glob(os.path.join(self.img_path, defect_type) + "/*.png") + \
-                            glob.glob(os.path.join(self.img_path, defect_type) + "/*.JPG")
+                img_paths = _glob_images(os.path.join(self.img_path, defect_type))
                 img_tot_paths.extend(img_paths)
                 gt_tot_paths.extend([0] * len(img_paths))
                 tot_labels.extend([0] * len(img_paths))
                 tot_types.extend(['good'] * len(img_paths))
             else:
-                img_paths = glob.glob(os.path.join(self.img_path, defect_type) + "/*.png") + \
-                            glob.glob(os.path.join(self.img_path, defect_type) + "/*.JPG")
-                gt_paths = glob.glob(os.path.join(self.gt_path, defect_type) + "/*.png")
+                img_paths = _glob_images(os.path.join(self.img_path, defect_type))
+                gt_paths = _glob_images(os.path.join(self.gt_path, defect_type))
                 img_paths.sort()
                 gt_paths.sort()
                 img_tot_paths.extend(img_paths)
@@ -529,16 +533,14 @@ class MVTecSimplexDataset(torch.utils.data.Dataset):
 
         for defect_type in defect_types:
             if defect_type == 'good':
-                img_paths = glob.glob(os.path.join(self.img_path, defect_type) + "/*.png") + \
-                            glob.glob(os.path.join(self.img_path, defect_type) + "/*.JPG")
+                img_paths = _glob_images(os.path.join(self.img_path, defect_type))
                 img_tot_paths.extend(img_paths)
                 gt_tot_paths.extend([0] * len(img_paths))
                 tot_labels.extend([0] * len(img_paths))
                 tot_types.extend(['good'] * len(img_paths))
             else:
-                img_paths = glob.glob(os.path.join(self.img_path, defect_type) + "/*.png") + \
-                            glob.glob(os.path.join(self.img_path, defect_type) + "/*.JPG")
-                gt_paths = glob.glob(os.path.join(self.gt_path, defect_type) + "/*.png")
+                img_paths = _glob_images(os.path.join(self.img_path, defect_type))
+                gt_paths = _glob_images(os.path.join(self.gt_path, defect_type))
                 img_paths.sort()
                 gt_paths.sort()
                 img_tot_paths.extend(img_paths)
