@@ -256,10 +256,9 @@ def predict_unlabeled(
 
     all_paths = []
     all_scores = []
-    # 如果需要热力图或 bbox，暂存 anomaly_map 和原图
+    # 如果需要热力图或 bbox，暂存 anomaly_map（可视化时直接读原图文件）
     need_vis = save_heatmap or save_bbox
     all_anomaly_maps = [] if need_vis else None
-    all_imgs = [] if need_vis else None
 
     with torch.no_grad():
         for img, img_path in dataloader:
@@ -290,7 +289,6 @@ def predict_unlabeled(
 
             if need_vis:
                 all_anomaly_maps.append(anomaly_map.cpu())
-                all_imgs.append(img.cpu())
 
     all_scores = torch.cat(all_scores).numpy()
 
@@ -362,17 +360,13 @@ def predict_unlabeled(
         if save_bbox:
             os.makedirs(dir_bbox, exist_ok=True)
 
-        # 合并所有 anomaly_map 和 img
+        # 合并所有 anomaly_map
         all_anomaly_maps = torch.cat(all_anomaly_maps, dim=0)  # (N, 1, H, W)
-        all_imgs = torch.cat(all_imgs, dim=0)  # (N, 3, H, W)
 
         # 按分数排序的索引
         sorted_indices = np.argsort(all_scores)[::-1]
         if heatmap_topk > 0:
             sorted_indices = sorted_indices[:heatmap_topk]
-
-        mean = np.array([0.485, 0.456, 0.406])
-        std = np.array([0.229, 0.224, 0.225])
 
         vis_types = []
         if save_heatmap:
@@ -383,19 +377,17 @@ def predict_unlabeled(
 
         for rank, idx in enumerate(sorted_indices):
             amap = all_anomaly_maps[idx, 0].numpy()  # (H, W)
-            img_tensor = all_imgs[idx]  # (3, H, W)
 
-            # 还原图像
-            im = img_tensor.permute(1, 2, 0).numpy()
-            im = im * std + mean
-            im = np.clip(im * 255, 0, 255).astype("uint8")
-            im_bgr = im[:, :, ::-1]
+            # 读取原图（保留原始分辨率）
+            orig_img = cv2.imread(all_paths[idx])
+            if orig_img is None:
+                print(f"  [warn] cannot read {all_paths[idx]}, skipping")
+                continue
 
-            # resize anomaly_map 到图像尺寸
-            if amap.shape[0] != im.shape[0] or amap.shape[1] != im.shape[1]:
-                amap = cv2.resize(amap, (im.shape[1], im.shape[0]))
-
-            amap_norm = min_max_norm(amap)
+            # resize anomaly_map 到原图尺寸
+            h_orig, w_orig = orig_img.shape[:2]
+            amap_resized = cv2.resize(amap, (w_orig, h_orig))
+            amap_norm = min_max_norm(amap_resized)
 
             # 文件名
             orig_name = os.path.splitext(os.path.basename(all_paths[idx]))[0]
@@ -404,14 +396,14 @@ def predict_unlabeled(
 
             if save_heatmap:
                 heatmap = cvt2heatmap(amap_norm * 255)
-                hm_on_img = show_cam_on_image(im_bgr, heatmap)
-                cv2.imwrite(os.path.join(dir_img, f"{prefix}.png"), im_bgr)
+                hm_on_img = show_cam_on_image(orig_img, heatmap)
+                cv2.imwrite(os.path.join(dir_img, f"{prefix}.png"), orig_img)
                 cv2.imwrite(os.path.join(dir_heatmap, f"{prefix}.png"), heatmap)
                 cv2.imwrite(os.path.join(dir_overlay, f"{prefix}.png"), hm_on_img)
 
             if save_bbox:
                 bboxes = extract_anomaly_bboxes(amap_norm, bbox_threshold_ratio, bbox_min_area)
-                bbox_img = draw_bboxes(im_bgr, bboxes)
+                bbox_img = draw_bboxes(orig_img, bboxes)
                 cv2.imwrite(os.path.join(dir_bbox, f"{prefix}.png"), bbox_img)
 
         print(f"[predict] visualizations saved.")
