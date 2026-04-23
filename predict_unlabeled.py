@@ -402,8 +402,11 @@ def predict_unlabeled(
                 cv2.imwrite(os.path.join(dir_overlay, f"{prefix}.png"), hm_on_img)
 
             if save_bbox:
-                bboxes = extract_anomaly_bboxes(amap_norm, bbox_threshold_ratio, bbox_min_area)
-                bbox_img = draw_bboxes(orig_img, bboxes)
+                if preds[idx] == 1:
+                    bboxes = extract_anomaly_bboxes(amap_norm, bbox_threshold_ratio, bbox_min_area)
+                    bbox_img = draw_bboxes(orig_img, bboxes)
+                else:
+                    bbox_img = orig_img.copy()
                 cv2.imwrite(os.path.join(dir_bbox, f"{prefix}.png"), bbox_img)
 
         print(f"[predict] visualizations saved.")
